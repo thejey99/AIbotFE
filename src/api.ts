@@ -8,9 +8,15 @@ if (!API_BASE) {
   );
 }
 
+export interface SearchSource {
+  title: string;
+  url: string;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  sources?: SearchSource[] | null;
 }
 
 export interface ConversationSummary {
@@ -175,10 +181,72 @@ export async function removeFromAllowlist(email: string): Promise<void> {
 
 /**
  * Send one message on the persistent contract. Streams deltas via onDelta,
- * reports web searches via onSearch. Returns the conversationId (echoed
- * back, or newly created by the server).
+ * reports web searches via onSearch, and delivers source citations via
+ * onSources. Returns the conversationId (echoed back, or newly created).
  */
 export async function streamChat(
   message: string,
   conversationId: string | null,
-  onDelta: (text: string) =>
+  onDelta: (text: string) => void,
+  model: ModelAlias = "default",
+  onSearch?: (query: string) => void,
+  onSources?: (sources: SearchSource[]) => void
+): Promise<string | null> {
+  const res = await fetch(`${API_BASE}/api/chat`, {
+    method: "POST",
+    headers: await authHeaders(),
+    body: JSON.stringify({
+      message,
+      ...(conversationId ? { conversationId } : {}),
+      ...(model !== "default" ? { model } : {}),
+    }),
+  });
+
+  if (!res.ok || !res.body) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail.error ?? `Request failed (${res.status})`);
+  }
+
+  const newId = res.headers.get("X-Conversation-Id");
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+
+    // Process complete lines only; keep the trailing partial in the buffer
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+
+      const payload = trimmed.slice(5).trim();
+      if (payload === "[DONE]") return conversationId ?? newId;
+
+      try {
+        const json = JSON.parse(payload);
+        if (json.search?.query && onSearch) {
+          onSearch(json.search.query);
+          continue;
+        }
+        if (Array.isArray(json.sources) && onSources) {
+          onSources(json.sources);
+          continue;
+        }
+        const delta: string | undefined = json.choices?.[0]?.delta?.content;
+        if (delta) onDelta(delta);
+      } catch {
+        // Ignore malformed/partial frames
+      }
+    }
+  }
+
+  return conversationId ?? newId;
+}
