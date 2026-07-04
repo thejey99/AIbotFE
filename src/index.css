@@ -293,3 +293,16 @@ button.ghost.icon.small { font-size: 1.05rem; padding: 0 0.3rem; }
 }
 
 button.ghost.full { width: 100%; }
+/* ---- Model toggle ---- */
+
+.model-toggle {
+  align-self: center;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  min-width: 3.2rem;
+}
+
+.model-toggle.pro-on {
+  color: #ffd166;
+  border-color: #ffd166;
+}
