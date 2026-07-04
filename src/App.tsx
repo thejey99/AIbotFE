@@ -40,6 +40,18 @@ function hostnameOf(url: string): string {
   }
 }
 
+async function fileToCompressedDataUrl(file: File, maxDim = 1024): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  return canvas.toDataURL("image/jpeg", 0.8);
+}
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -98,6 +110,8 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
   const [rememberResult, setRememberResult] = useState<string>("");
   const [searchStatus, setSearchStatus] = useState("");
   const [proMode, setProMode] = useState(false);
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -146,6 +160,7 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
     setMessages([]);
     setError("");
     setRememberResult("");
+    setPendingImage(null);
     setDrawerOpen(false);
   }
 
@@ -204,9 +219,26 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
     }
   }
 
+  async function attachImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file
+    if (!file) return;
+    setError("");
+    try {
+      const dataUrl = await fileToCompressedDataUrl(file);
+      if (dataUrl.length > 850_000) {
+        setError("Image too large even after compression — try a smaller one.");
+        return;
+      }
+      setPendingImage(dataUrl);
+    } catch {
+      setError("Could not read that image.");
+    }
+  }
+
   async function send() {
     const text = input.trim();
-    if (!text || busy) return;
+    if ((!text && !pendingImage) || busy) return;
 
     setError("");
     setRememberResult("");
@@ -215,10 +247,12 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
     setBusy(true);
 
     const model: ModelAlias = proMode ? "pro" : "default";
+    const imageToSend = pendingImage;
+    setPendingImage(null);
 
     setMessages((prev) => [
       ...prev,
-      { role: "user", content: text },
+      { role: "user", content: text, image: imageToSend },
       { role: "assistant", content: "" },
     ]);
 
@@ -243,7 +277,8 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
             const last = next[next.length - 1];
             next[next.length - 1] = { ...last, sources };
             return next;
-          })
+          }),
+        imageToSend
       );
 
       if (!activeId && returnedId) setActiveId(returnedId);
@@ -392,7 +427,12 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
                 ""
               )
             ) : (
-              m.content
+              <>
+                {m.image && (
+                  <img className="bubble-img" src={m.image} alt="attachment" />
+                )}
+                {m.content}
+              </>
             )}
           </div>
         ))}
@@ -402,6 +442,31 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
       </div>
 
       <div className="composer">
+        {pendingImage && (
+          <div className="attach-preview">
+            <img src={pendingImage} alt="pending attachment" />
+            <button
+              className="ghost icon small"
+              onClick={() => setPendingImage(null)}
+            >
+              ×
+            </button>
+          </div>
+        )}
+        <button
+          className="ghost model-toggle"
+          onClick={() => fileInputRef.current?.click()}
+          title="Attach an image"
+        >
+          📷
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: "none" }}
+          onChange={attachImage}
+        />
         <button
           className={`ghost model-toggle ${proMode ? "pro-on" : ""}`}
           onClick={() => setProMode((p) => !p)}
@@ -421,7 +486,11 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
           placeholder={proMode ? "Message (Pro)…" : "Message…"}
           rows={1}
         />
-        <button className="primary" onClick={send} disabled={busy || !input.trim()}>
+        <button
+          className="primary"
+          onClick={send}
+          disabled={busy || (!input.trim() && !pendingImage)}
+        >
           Send
         </button>
       </div>
