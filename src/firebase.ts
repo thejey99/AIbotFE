@@ -3,14 +3,14 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signOut as fbSignOut,
   onAuthStateChanged,
   type User,
 } from "firebase/auth";
 
 // All values come from Render environment variables (baked in at build time).
-// None of these are secrets — they're public identifiers — but keeping them
-// in env vars keeps the repo clean and environment-agnostic.
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FB_API_KEY,
   authDomain: import.meta.env.VITE_FB_AUTH_DOMAIN,
@@ -20,8 +20,6 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FB_APP_ID,
 };
 
-// Fail loudly at startup if the build was missing its env vars,
-// instead of producing cryptic auth errors later.
 if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
   throw new Error(
     "Firebase config missing. Set VITE_FB_* environment variables in Render and redeploy."
@@ -31,11 +29,32 @@ if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
+// Complete a redirect-based sign-in if we're returning from one.
+// Harmless no-op otherwise. Errors surface via the sign-in button flow.
+getRedirectResult(auth).catch(() => {});
+
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: "select_account" });
 
-export function signIn(): Promise<unknown> {
-  return signInWithPopup(auth, provider);
+export async function signIn(): Promise<void> {
+  try {
+    await signInWithPopup(auth, provider);
+  } catch (err: any) {
+    // Popup blocked or unsupported (common in installed PWAs / some mobile
+    // browsers) -> fall back to full-page redirect. With authDomain on our
+    // own origin, redirect state survives storage partitioning.
+    const code: string = err?.code ?? "";
+    if (
+      code === "auth/popup-blocked" ||
+      code === "auth/popup-closed-by-user" ||
+      code === "auth/cancelled-popup-request" ||
+      code === "auth/operation-not-supported-in-this-environment"
+    ) {
+      await signInWithRedirect(auth, provider);
+      return;
+    }
+    throw err;
+  }
 }
 
 export function signOut(): Promise<void> {
