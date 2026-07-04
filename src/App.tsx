@@ -123,7 +123,13 @@ function buildSrcDoc(block: RunnableBlock): string {
   }
   // Plain JS: wrap in a minimal shell. Escape any </script> inside the code.
   const safe = block.code.replace(/<\/script>/gi, "<\\/script>");
-  return `<!DOCTYPE html><html><head>${SANDBOX_HARNESS}</head><body style="margin:0;background:#fff;color:#111;font-family:monospace"><script>${safe}<\/script></body></html>`;
+  return (
+    "<!DOCTYPE html><html><head>" +
+    SANDBOX_HARNESS +
+    '</head><body style="margin:0;background:#fff;color:#111;font-family:monospace"><script>' +
+    safe +
+    "<\\/script></body></html>"
+  );
 }
 
 export default function App() {
@@ -524,7 +530,11 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
                     )}
                   </>
                 ) : busy && i === messages.length - 1 ? (
-                  <span className="typing"><span /><span /><span /></span>
+                  <span className="typing">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
                 ) : (
                   ""
                 )
