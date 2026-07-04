@@ -15,6 +15,7 @@ import {
   type ChatMessage,
   type ConversationSummary,
   type MemoryItem,
+  type ModelAlias,
 } from "./api";
 
 marked.setOptions({ breaks: true });
@@ -77,6 +78,7 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [remembering, setRemembering] = useState(false);
   const [rememberResult, setRememberResult] = useState<string>("");
+  const [proMode, setProMode] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -165,6 +167,8 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
     setInput("");
     setBusy(true);
 
+    const model: ModelAlias = proMode ? "pro" : "default";
+
     setMessages((prev) => [
       ...prev,
       { role: "user", content: text },
@@ -179,7 +183,7 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
           next[next.length - 1] = { ...last, content: last.content + delta };
           return next;
         });
-      });
+      }, model);
 
       if (!activeId && returnedId) setActiveId(returnedId);
       refreshConversations(); // update titles/ordering in the background
@@ -279,6 +283,13 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
       </div>
 
       <div className="composer">
+        <button
+          className={`ghost model-toggle ${proMode ? "pro-on" : ""}`}
+          onClick={() => setProMode((p) => !p)}
+          title={proMode ? "Pro model on (limited daily quota)" : "Using fast model"}
+        >
+          {proMode ? "PRO" : "fast"}
+        </button>
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -288,7 +299,7 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
               send();
             }
           }}
-          placeholder="Message…"
+          placeholder={proMode ? "Message (Pro)…" : "Message…"}
           rows={1}
         />
         <button className="primary" onClick={send} disabled={busy || !input.trim()}>
