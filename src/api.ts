@@ -156,7 +156,11 @@ export async function rememberConversation(
 ): Promise<{ added: string[]; deactivated: number }> {
   const res = await fetch(
     `${API_BASE}/api/conversations/${encodeURIComponent(conversationId)}/remember`,
-    { method: "POST", headers: await authHeaders() }
+    {
+      method: "POST",
+      headers: await authHeaders(),
+      body: JSON.stringify({}),
+    }
   );
   return jsonOrThrow(res);
 }
