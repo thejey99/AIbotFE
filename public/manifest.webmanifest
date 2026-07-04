@@ -3,7 +3,14 @@
   "short_name": "Chat",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#1a1a2e",
-  "theme_color": "#1a1a2e",
-  "icons": []
+  "background_color": "#0c0c16",
+  "theme_color": "#0c0c16",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
 }
