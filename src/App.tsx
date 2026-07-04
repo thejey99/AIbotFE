@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "firebase/auth";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
@@ -50,6 +50,80 @@ async function fileToCompressedDataUrl(file: File, maxDim = 1024): Promise<strin
   ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close();
   return canvas.toDataURL("image/jpeg", 0.8);
+}
+
+// ---------- Code sandbox helpers ----------
+
+interface RunnableBlock {
+  lang: "html" | "js";
+  code: string;
+  label: string;
+}
+
+function extractRunnableBlocks(content: string): RunnableBlock[] {
+  const blocks: RunnableBlock[] = [];
+  const re = /```(\w+)?\n([\s\S]*?)```/g;
+  let match: RegExpExecArray | null;
+  let htmlCount = 0;
+  let jsCount = 0;
+
+  while ((match = re.exec(content)) !== null) {
+    const lang = (match[1] ?? "").toLowerCase();
+    const code = match[2];
+    if (!code.trim()) continue;
+
+    if (lang === "html") {
+      htmlCount++;
+      blocks.push({
+        lang: "html",
+        code,
+        label: htmlCount > 1 ? `Run HTML #${htmlCount}` : "Run HTML",
+      });
+    } else if (lang === "js" || lang === "javascript") {
+      jsCount++;
+      blocks.push({
+        lang: "js",
+        code,
+        label: jsCount > 1 ? `Run JS #${jsCount}` : "Run JS",
+      });
+    }
+  }
+  return blocks;
+}
+
+const SANDBOX_HARNESS = `<script>
+(function () {
+  function fmt(a) {
+    try { return typeof a === "object" ? JSON.stringify(a) : String(a); }
+    catch { return String(a); }
+  }
+  function send(level, args) {
+    parent.postMessage(
+      { __sandbox: true, level: level, text: Array.prototype.map.call(args, fmt).join(" ") },
+      "*"
+    );
+  }
+  ["log", "info", "warn", "error"].forEach(function (l) {
+    var orig = console[l];
+    console[l] = function () { send(l, arguments); orig.apply(console, arguments); };
+  });
+  window.addEventListener("error", function (e) {
+    send("error", [e.message + " (line " + e.lineno + ")"]);
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    send("error", ["Unhandled promise rejection: " + fmt(e.reason)]);
+  });
+})();
+<\/script>`;
+
+function buildSrcDoc(block: RunnableBlock): string {
+  if (block.lang === "html") {
+    // Prepend the harness so console capture is active before user code runs
+    return SANDBOX_HARNESS + "\n" + block.code;
+  }
+  // Plain JS: wrap in a minimal shell. Escape any </script> inside the code.
+  const safe = block.code.replace(/<\/script>/gi, "<\\/script>");
+  return `<!DOCTYPE html><html><head>${SANDBOX_HARNESS}</head><body style="margin:0;background:#fff;color:#111;font-family:monospace"><script>${safe}<\/script></body></html>`;
 }
 
 export default function App() {
@@ -111,6 +185,7 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
   const [searchStatus, setSearchStatus] = useState("");
   const [proMode, setProMode] = useState(false);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [sandboxBlock, setSandboxBlock] = useState<RunnableBlock | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -404,47 +479,66 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
         {!loadingHistory && messages.length === 0 && (
           <p className="empty-hint">Start a conversation.</p>
         )}
-        {messages.map((m, i) => (
-          <div key={i} className={`bubble ${m.role}`}>
-            {m.role === "assistant" ? (
-              m.content ? (
-                <>
-                  <div
-                    className="md"
-                    dangerouslySetInnerHTML={renderMarkdown(m.content)}
-                  />
-                  {m.sources && m.sources.length > 0 && (
-                    <div className="sources">
-                      {m.sources.map((s, si) => (
-                        <a
-                          key={si}
-                          className="source-chip"
-                          href={s.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title={s.title}
-                        >
-                          {hostnameOf(s.url)}
-                        </a>
-                      ))}
-                    </div>
-                  )}
-                </>
-              ) : busy && i === messages.length - 1 ? (
-                <span className="typing"><span /><span /><span /></span>
+        {messages.map((m, i) => {
+          const runnables =
+            m.role === "assistant" && m.content
+              ? extractRunnableBlocks(m.content)
+              : [];
+          return (
+            <div key={i} className={`bubble ${m.role}`}>
+              {m.role === "assistant" ? (
+                m.content ? (
+                  <>
+                    <div
+                      className="md"
+                      dangerouslySetInnerHTML={renderMarkdown(m.content)}
+                    />
+                    {runnables.length > 0 && (
+                      <div className="sources">
+                        {runnables.map((b, bi) => (
+                          <button
+                            key={bi}
+                            className="source-chip run-chip"
+                            onClick={() => setSandboxBlock(b)}
+                          >
+                            ▶ {b.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {m.sources && m.sources.length > 0 && (
+                      <div className="sources">
+                        {m.sources.map((s, si) => (
+                          
+                            key={si}
+                            className="source-chip"
+                            href={s.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={s.title}
+                          >
+                            {hostnameOf(s.url)}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : busy && i === messages.length - 1 ? (
+                  <span className="typing"><span /><span /><span /></span>
+                ) : (
+                  ""
+                )
               ) : (
-                ""
-              )
-            ) : (
-              <>
-                {m.image && (
-                  <img className="bubble-img" src={m.image} alt="attachment" />
-                )}
-                {m.content}
-              </>
-            )}
-          </div>
-        ))}
+                <>
+                  {m.image && (
+                    <img className="bubble-img" src={m.image} alt="attachment" />
+                  )}
+                  {m.content}
+                </>
+              )}
+            </div>
+          );
+        })}
         {error && <p className="error">{error}</p>}
         {rememberResult && <p className="empty-hint small">{rememberResult}</p>}
         {searchStatus && <p className="empty-hint small">🔍 {searchStatus}</p>}
@@ -510,6 +604,82 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
       {adminOpen && (
         <AdminPanel selfEmail={me?.email ?? ""} onClose={() => setAdminOpen(false)} />
       )}
+      {sandboxBlock && (
+        <SandboxPanel block={sandboxBlock} onClose={() => setSandboxBlock(null)} />
+      )}
+    </div>
+  );
+}
+
+function SandboxPanel({
+  block,
+  onClose,
+}: {
+  block: RunnableBlock;
+  onClose: () => void;
+}) {
+  const [logs, setLogs] = useState<Array<{ level: string; text: string }>>([]);
+  const [nonce, setNonce] = useState(0);
+  const logRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handler(e: MessageEvent) {
+      if (e.data?.__sandbox) {
+        setLogs((prev) => [
+          ...prev.slice(-199),
+          { level: String(e.data.level), text: String(e.data.text) },
+        ]);
+      }
+    }
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, []);
+
+  useEffect(() => {
+    logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
+  }, [logs]);
+
+  const srcDoc = useMemo(() => buildSrcDoc(block), [block, nonce]);
+
+  function reload() {
+    setLogs([]);
+    setNonce((n) => n + 1);
+  }
+
+  return (
+    <div className="memory-overlay">
+      <div className="memory-panel sandbox-panel">
+        <div className="memory-header">
+          <span className="topbar-title">▶ Sandbox</span>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button className="ghost" onClick={reload}>
+              Reload
+            </button>
+            <button className="ghost" onClick={onClose}>
+              Close
+            </button>
+          </div>
+        </div>
+
+        <iframe
+          key={nonce}
+          className="sandbox-frame"
+          sandbox="allow-scripts"
+          srcDoc={srcDoc}
+          title="Code sandbox"
+        />
+
+        <div className="sandbox-console" ref={logRef}>
+          {logs.length === 0 && (
+            <div className="console-line dim">Console output appears here…</div>
+          )}
+          {logs.map((l, i) => (
+            <div key={i} className={`console-line ${l.level}`}>
+              {l.text}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
