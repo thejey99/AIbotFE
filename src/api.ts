@@ -8,9 +8,59 @@ if (!API_BASE) {
   );
 }
 
-export interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
+// Replace the existing ConversationSummary interface with:
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  updatedAt: number | null;
+  pinned: boolean;
+}
+
+export interface Me {
+  email: string;
+  role: "admin" | "user";
+}
+
+export interface AllowlistEntry {
+  email: string;
+  role: "admin" | "user";
+  addedAt: number | null;
+}
+
+export async function getMe(): Promise<Me> {
+  const res = await fetch(`${API_BASE}/api/me`, { headers: await authHeaders() });
+  return jsonOrThrow(res);
+}
+
+export async function setPinned(id: string, pinned: boolean): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/conversations/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: await authHeaders(),
+    body: JSON.stringify({ pinned }),
+  });
+  await jsonOrThrow(res);
+}
+
+export async function listAllowlist(): Promise<AllowlistEntry[]> {
+  const res = await fetch(`${API_BASE}/api/allowlist`, { headers: await authHeaders() });
+  return jsonOrThrow(res);
+}
+
+export async function addToAllowlist(email: string, role: "admin" | "user"): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/allowlist`, {
+    method: "POST",
+    headers: await authHeaders(),
+    body: JSON.stringify({ email, role }),
+  });
+  await jsonOrThrow(res);
+}
+
+export async function removeFromAllowlist(email: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/allowlist/${encodeURIComponent(email)}`, {
+    method: "DELETE",
+    headers: await authHeaders(),
+  });
+  await jsonOrThrow(res);
 }
 
 export interface ConversationSummary {
