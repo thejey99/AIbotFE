@@ -12,10 +12,17 @@ import {
   addMemory,
   updateMemory,
   rememberConversation,
+  getMe,
+  setPinned,
+  listAllowlist,
+  addToAllowlist,
+  removeFromAllowlist,
   type ChatMessage,
   type ConversationSummary,
   type MemoryItem,
   type ModelAlias,
+  type Me,
+  type AllowlistEntry,
 } from "./api";
 
 marked.setOptions({ breaks: true });
@@ -67,6 +74,8 @@ function SignInScreen() {
 }
 
 function ChatScreen({ userEmail }: { userEmail: string }) {
+  const [me, setMe] = useState<Me | null>(null);
+  const [meError, setMeError] = useState("");
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -76,13 +85,22 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [error, setError] = useState("");
   const [memoryOpen, setMemoryOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
   const [remembering, setRemembering] = useState(false);
   const [rememberResult, setRememberResult] = useState<string>("");
   const [proMode, setProMode] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    refreshConversations();
+    (async () => {
+      try {
+        setMe(await getMe());
+        await refreshConversations();
+      } catch (err: any) {
+        // Not on the allowlist (403) or backend unreachable
+        setMeError(err?.message ?? "Unable to load account");
+      }
+    })();
   }, []);
 
   useEffect(() => {
@@ -121,6 +139,26 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
     setError("");
     setRememberResult("");
     setDrawerOpen(false);
+  }
+
+  async function togglePin(c: ConversationSummary, e: React.MouseEvent) {
+    e.stopPropagation();
+    // Optimistic update, revert on failure
+    const next = !c.pinned;
+    setConversations((prev) => {
+      const updated = prev.map((x) => (x.id === c.id ? { ...x, pinned: next } : x));
+      updated.sort((a, b) => {
+        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+        return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
+      });
+      return updated;
+    });
+    try {
+      await setPinned(c.id, next);
+    } catch (err: any) {
+      setError(err?.message ?? "Pin failed");
+      refreshConversations();
+    }
   }
 
   async function removeConversation(id: string, e: React.MouseEvent) {
@@ -186,7 +224,7 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
       }, model);
 
       if (!activeId && returnedId) setActiveId(returnedId);
-      refreshConversations(); // update titles/ordering in the background
+      refreshConversations();
     } catch (err: any) {
       setError(err?.message ?? "Something went wrong");
       setMessages((prev) =>
@@ -195,6 +233,23 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
     } finally {
       setBusy(false);
     }
+  }
+
+  // Signed in with Google but not on the allowlist: clear dead-end screen
+  if (meError) {
+    return (
+      <div className="centered">
+        <div className="signin-card">
+          <h1>Not authorized</h1>
+          <p className="empty-hint small" style={{ marginBottom: "1.25rem" }}>
+            {meError}
+          </p>
+          <button className="ghost full" onClick={() => signOut()}>
+            Sign out
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -232,6 +287,17 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
         >
           🧠 Memory
         </button>
+        {me?.role === "admin" && (
+          <button
+            className="ghost full"
+            onClick={() => {
+              setDrawerOpen(false);
+              setAdminOpen(true);
+            }}
+          >
+            👥 Manage users
+          </button>
+        )}
         <div className="conv-list">
           {conversations.length === 0 && (
             <p className="empty-hint small">No conversations yet.</p>
@@ -242,7 +308,17 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
               className={`conv-item ${c.id === activeId ? "active" : ""}`}
               onClick={() => openConversation(c.id)}
             >
-              <span className="conv-title">{c.title}</span>
+              <span className="conv-title">
+                {c.pinned && <span className="pin-mark">📌 </span>}
+                {c.title}
+              </span>
+              <button
+                className="ghost icon small"
+                onClick={(e) => togglePin(c, e)}
+                title={c.pinned ? "Unpin" : "Pin"}
+              >
+                {c.pinned ? "📌" : "📍"}
+              </button>
               <button
                 className="ghost icon small"
                 onClick={(e) => removeConversation(c.id, e)}
@@ -308,6 +384,7 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
       </div>
 
       {memoryOpen && <MemoryPanel onClose={() => setMemoryOpen(false)} />}
+      {adminOpen && <AdminPanel selfEmail={me?.email ?? ""} onClose={() => setAdminOpen(false)} />}
     </div>
   );
 }
@@ -416,6 +493,116 @@ function MemoryPanel({ onClose }: { onClose: () => void }) {
               <button className="ghost" onClick={() => toggle(item)}>
                 {item.active ? "Retire" : "Restore"}
               </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminPanel({
+  selfEmail,
+  onClose,
+}: {
+  selfEmail: string;
+  onClose: () => void;
+}) {
+  const [entries, setEntries] = useState<AllowlistEntry[]>([]);
+  const [newEmail, setNewEmail] = useState("");
+  const [newRole, setNewRole] = useState<"user" | "admin">("user");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  async function refresh() {
+    setLoading(true);
+    setError("");
+    try {
+      setEntries(await listAllowlist());
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to load users");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function add() {
+    const email = newEmail.trim().toLowerCase();
+    if (!email || !email.includes("@")) return;
+    setError("");
+    try {
+      await addToAllowlist(email, newRole);
+      setNewEmail("");
+      setNewRole("user");
+      refresh();
+    } catch (err: any) {
+      setError(err?.message ?? "Add failed");
+    }
+  }
+
+  async function remove(email: string) {
+    if (email === selfEmail) return;
+    if (!window.confirm(`Remove ${email}? They will lose access immediately.`))
+      return;
+    setError("");
+    try {
+      await removeFromAllowlist(email);
+      setEntries((prev) => prev.filter((e) => e.email !== email));
+    } catch (err: any) {
+      setError(err?.message ?? "Remove failed");
+    }
+  }
+
+  return (
+    <div className="memory-overlay">
+      <div className="memory-panel">
+        <div className="memory-header">
+          <span className="topbar-title">Users</span>
+          <button className="ghost" onClick={onClose}>
+            Close
+          </button>
+        </div>
+
+        <div className="memory-add">
+          <input
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && add()}
+            placeholder="email@example.com"
+            type="email"
+          />
+          <button
+            className={`ghost role-toggle ${newRole === "admin" ? "pro-on" : ""}`}
+            onClick={() => setNewRole((r) => (r === "user" ? "admin" : "user"))}
+            title="Toggle role for the new user"
+          >
+            {newRole}
+          </button>
+          <button className="primary" onClick={add} disabled={!newEmail.includes("@")}>
+            Add
+          </button>
+        </div>
+
+        {error && <p className="error">{error}</p>}
+        {loading && <p className="empty-hint small">Loading…</p>}
+
+        <div className="memory-list">
+          {entries.map((entry) => (
+            <div key={entry.email} className="memory-item">
+              <span className="memory-text" style={{ cursor: "default" }}>
+                {entry.email}
+                {entry.role === "admin" && <span className="role-badge"> admin</span>}
+                {entry.email === selfEmail && <span className="role-badge you"> you</span>}
+              </span>
+              {entry.email !== selfEmail && (
+                <button className="ghost" onClick={() => remove(entry.email)}>
+                  Remove
+                </button>
+              )}
             </div>
           ))}
         </div>
