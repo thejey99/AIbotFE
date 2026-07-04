@@ -223,3 +223,73 @@ button.ghost.icon { padding: 0.35rem 0.6rem; font-size: 1rem; border: none; }
 button.ghost.icon.small { font-size: 1.05rem; padding: 0 0.3rem; }
 
 .error { color: #ff7a7a; font-size: 0.85rem; }
+
+/* ---- Memory panel ---- */
+
+.memory-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 20;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.memory-panel {
+  background: #20203a;
+  border-radius: 16px 16px 0 0;
+  width: min(760px, 100vw);
+  max-height: 85vh;
+  padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.memory-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.memory-add {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.memory-add input {
+  flex: 1;
+  background: #23233a;
+  color: inherit;
+  border: 1px solid #33334d;
+  border-radius: 10px;
+  padding: 0.55rem 0.8rem;
+  font: inherit;
+}
+
+.memory-list {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.memory-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: #2b2b45;
+  border-radius: 10px;
+  padding: 0.55rem 0.75rem;
+}
+
+.memory-item.inactive { opacity: 0.45; }
+
+.memory-text {
+  flex: 1;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+button.ghost.full { width: 100%; }
