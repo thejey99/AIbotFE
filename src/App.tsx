@@ -60,9 +60,9 @@ interface RunnableBlock {
   label: string;
 }
 
-// The code-fence marker, built dynamically so this source file never
-// contains a literal triple-backtick (which corrupts when shared in
-// markdown contexts).
+// The code-fence marker (three backticks), built dynamically so this source
+// file never contains backtick characters, which corrupt when the file is
+// shared through markdown or chat interfaces.
 const FENCE = String.fromCharCode(96, 96, 96);
 const BLOCK_RE = new RegExp(FENCE + "(\\w+)?\\n([\\s\\S]*?)" + FENCE, "g");
 
@@ -130,14 +130,90 @@ function buildSrcDoc(block: RunnableBlock): string {
     return SANDBOX_HARNESS + "\n" + block.code;
   }
   // Plain JS: wrap in a minimal shell. Escape any closing script tags inside.
-  const safe = block.code.replace(/<\/script>/gi, "<\\/scr" + "ipt>");
+  const closer = "</scr" + "ipt>";
+  const safe = block.code.split(closer).join("<\\/scr" + "ipt>");
   return (
     "<!DOCTYPE html><html><head>" +
     SANDBOX_HARNESS +
     '</head><body style="margin:0;background:#fff;color:#111;font-family:monospace">' +
     "<scr" + "ipt>" +
     safe +
-    "</scr" + "ipt></body></html>"
+    closer +
+    "</body></html>"
+  );
+}
+
+// ---------- Message bubble ----------
+
+function MessageBubble({
+  m,
+  isStreamingPlaceholder,
+  onRun,
+}: {
+  m: ChatMessage;
+  isStreamingPlaceholder: boolean;
+  onRun: (block: RunnableBlock) => void;
+}) {
+  if (m.role === "user") {
+    return (
+      <div className="bubble user">
+        {m.image && <img className="bubble-img" src={m.image} alt="attachment" />}
+        {m.content}
+      </div>
+    );
+  }
+
+  if (!m.content) {
+    return (
+      <div className="bubble assistant">
+        {isStreamingPlaceholder ? (
+          <span className="typing">
+            <span />
+            <span />
+            <span />
+          </span>
+        ) : (
+          ""
+        )}
+      </div>
+    );
+  }
+
+  const runnables = extractRunnableBlocks(m.content);
+
+  return (
+    <div className="bubble assistant">
+      <div className="md" dangerouslySetInnerHTML={renderMarkdown(m.content)} />
+      {runnables.length > 0 && (
+        <div className="sources">
+          {runnables.map((b, bi) => (
+            <button
+              key={bi}
+              className="source-chip run-chip"
+              onClick={() => onRun(b)}
+            >
+              ▶ {b.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {m.sources && m.sources.length > 0 && (
+        <div className="sources">
+          {m.sources.map((s, si) => (
+            
+              key={si}
+              className="source-chip"
+              href={s.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={s.title}
+            >
+              {hostnameOf(s.url)}
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -224,7 +300,7 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + "px";
     }
   }, [input]);
 
@@ -305,12 +381,14 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
     setRemembering(true);
     try {
       const result = await rememberConversation(activeId);
-      setRememberResult(
-        result.added.length === 0 && result.deactivated === 0
-          ? "Nothing new to remember."
-          : `Remembered ${result.added.length} fact(s)` +
-            (result.deactivated > 0 ? `, retired ${result.deactivated} outdated.` : ".")
-      );
+      let msg: string;
+      if (result.added.length === 0 && result.deactivated === 0) {
+        msg = "Nothing new to remember.";
+      } else {
+        msg = "Remembered " + result.added.length + " fact(s)";
+        msg += result.deactivated > 0 ? ", retired " + result.deactivated + " outdated." : ".";
+      }
+      setRememberResult(msg);
     } catch (err: any) {
       setRememberResult(err?.message ?? "Extraction failed");
     } finally {
@@ -369,7 +447,7 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
           });
         },
         model,
-        (query) => setSearchStatus(`Searching the web: "${query}"…`),
+        (query) => setSearchStatus('Searching the web: "' + query + '"…'),
         (sources) =>
           setMessages((prev) => {
             const next = [...prev];
@@ -432,7 +510,7 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
         <div className="backdrop" onClick={() => setDrawerOpen(false)} />
       )}
 
-      <aside className={`drawer ${drawerOpen ? "open" : ""}`}>
+      <aside className={"drawer " + (drawerOpen ? "open" : "")}>
         <button className="primary full" onClick={newChat}>
           + New chat
         </button>
@@ -463,7 +541,7 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
           {conversations.map((c) => (
             <div
               key={c.id}
-              className={`conv-item ${c.id === activeId ? "active" : ""}`}
+              className={"conv-item " + (c.id === activeId ? "active" : "")}
               onClick={() => openConversation(c.id)}
             >
               <span className="conv-title">
@@ -494,70 +572,14 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
         {!loadingHistory && messages.length === 0 && (
           <p className="empty-hint">Start a conversation.</p>
         )}
-        {messages.map((m, i) => {
-          const runnables =
-            m.role === "assistant" && m.content
-              ? extractRunnableBlocks(m.content)
-              : [];
-          return (
-            <div key={i} className={`bubble ${m.role}`}>
-              {m.role === "assistant" ? (
-                m.content ? (
-                  <>
-                    <div
-                      className="md"
-                      dangerouslySetInnerHTML={renderMarkdown(m.content)}
-                    />
-                    {runnables.length > 0 && (
-                      <div className="sources">
-                        {runnables.map((b, bi) => (
-                          <button
-                            key={bi}
-                            className="source-chip run-chip"
-                            onClick={() => setSandboxBlock(b)}
-                          >
-                            ▶ {b.label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {m.sources && m.sources.length > 0 && (
-                      <div className="sources">
-                        {m.sources.map((s, si) => (
-                          
-                            key={si}
-                            className="source-chip"
-                            href={s.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            title={s.title}
-                          >
-                            {hostnameOf(s.url)}
-                          </a>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                ) : busy && i === messages.length - 1 ? (
-                  <span className="typing">
-                    <span />
-                    <span />
-                    <span />
-                  </span>
-                ) : (
-                  ""
-                )
-              ) : (
-                <>
-                  {m.image && (
-                    <img className="bubble-img" src={m.image} alt="attachment" />
-                  )}
-                  {m.content}
-                </>
-              )}
-            </div>
-          );
-        })}
+        {messages.map((m, i) => (
+          <MessageBubble
+            key={i}
+            m={m}
+            isStreamingPlaceholder={busy && i === messages.length - 1}
+            onRun={setSandboxBlock}
+          />
+        ))}
         {error && <p className="error">{error}</p>}
         {rememberResult && <p className="empty-hint small">{rememberResult}</p>}
         {searchStatus && <p className="empty-hint small">🔍 {searchStatus}</p>}
@@ -590,7 +612,7 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
           onChange={attachImage}
         />
         <button
-          className={`ghost model-toggle ${proMode ? "pro-on" : ""}`}
+          className={"ghost model-toggle " + (proMode ? "pro-on" : "")}
           onClick={() => setProMode((p) => !p)}
           title={proMode ? "Pro model on (limited daily quota)" : "Using fast model"}
         >
@@ -693,7 +715,7 @@ function SandboxPanel({
             <div className="console-line dim">Console output appears here…</div>
           )}
           {logs.map((l, i) => (
-            <div key={i} className={`console-line ${l.level}`}>
+            <div key={i} className={"console-line " + l.level}>
               {l.text}
             </div>
           ))}
@@ -795,7 +817,7 @@ function MemoryPanel({ onClose }: { onClose: () => void }) {
           {items.map((item) => (
             <div
               key={item.id}
-              className={`memory-item ${item.active ? "" : "inactive"}`}
+              className={"memory-item " + (item.active ? "" : "inactive")}
             >
               <span
                 className="memory-text"
@@ -860,7 +882,7 @@ function AdminPanel({
 
   async function remove(email: string) {
     if (email === selfEmail) return;
-    if (!window.confirm(`Remove ${email}? They will lose access immediately.`))
+    if (!window.confirm("Remove " + email + "? They will lose access immediately."))
       return;
     setError("");
     try {
@@ -890,7 +912,7 @@ function AdminPanel({
             type="email"
           />
           <button
-            className={`ghost role-toggle ${newRole === "admin" ? "pro-on" : ""}`}
+            className={"ghost role-toggle " + (newRole === "admin" ? "pro-on" : "")}
             onClick={() => setNewRole((r) => (r === "user" ? "admin" : "user"))}
             title="Toggle role for the new user"
           >
