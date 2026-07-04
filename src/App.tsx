@@ -1,7 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import type { User } from "firebase/auth";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
 import { signIn, signOut, watchAuth } from "./firebase";
-import { streamChat, type ChatMessage } from "./api";
+import {
+  streamChat,
+  listConversations,
+  getMessages,
+  deleteConversation,
+  type ChatMessage,
+  type ConversationSummary,
+} from "./api";
+
+marked.setOptions({ breaks: true });
+
+function renderMarkdown(content: string): { __html: string } {
+  const html = marked.parse(content, { async: false }) as string;
+  return { __html: DOMPurify.sanitize(html) };
+}
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -45,15 +61,71 @@ function SignInScreen() {
 }
 
 function ChatScreen({ userEmail }: { userEmail: string }) {
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [error, setError] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    refreshConversations();
+  }, []);
+
+  useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages]);
+
+  async function refreshConversations() {
+    try {
+      setConversations(await listConversations());
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to load conversations");
+    }
+  }
+
+  async function openConversation(id: string) {
+    setDrawerOpen(false);
+    if (id === activeId || busy) return;
+    setError("");
+    setLoadingHistory(true);
+    try {
+      const history = await getMessages(id);
+      setActiveId(id);
+      setMessages(history);
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to load conversation");
+    } finally {
+      setLoadingHistory(false);
+    }
+  }
+
+  function newChat() {
+    if (busy) return;
+    setActiveId(null);
+    setMessages([]);
+    setError("");
+    setDrawerOpen(false);
+  }
+
+  async function removeConversation(id: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    if (busy) return;
+    if (!window.confirm("Delete this conversation permanently?")) return;
+    try {
+      await deleteConversation(id);
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+      if (id === activeId) {
+        setActiveId(null);
+        setMessages([]);
+      }
+    } catch (err: any) {
+      setError(err?.message ?? "Delete failed");
+    }
+  }
 
   async function send() {
     const text = input.trim();
@@ -63,12 +135,14 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
     setInput("");
     setBusy(true);
 
-    const history: ChatMessage[] = [...messages, { role: "user", content: text }];
-    // Add the user message plus an empty assistant message we stream into
-    setMessages([...history, { role: "assistant", content: "" }]);
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", content: text },
+      { role: "assistant", content: "" },
+    ]);
 
     try {
-      await streamChat(history, (delta) => {
+      const returnedId = await streamChat(text, activeId, (delta) => {
         setMessages((prev) => {
           const next = [...prev];
           const last = next[next.length - 1];
@@ -76,9 +150,11 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
           return next;
         });
       });
+
+      if (!activeId && returnedId) setActiveId(returnedId);
+      refreshConversations(); // update titles/ordering in the background
     } catch (err: any) {
       setError(err?.message ?? "Something went wrong");
-      // Remove the empty assistant bubble on failure
       setMessages((prev) =>
         prev[prev.length - 1]?.content === "" ? prev.slice(0, -1) : prev
       );
@@ -90,6 +166,9 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
   return (
     <div className="chat-layout">
       <header className="topbar">
+        <button className="ghost icon" onClick={() => setDrawerOpen(true)}>
+          ☰
+        </button>
         <span className="topbar-title">Chat</span>
         <span className="topbar-user">{userEmail}</span>
         <button className="ghost" onClick={() => signOut()}>
@@ -97,13 +176,58 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
         </button>
       </header>
 
+      {drawerOpen && (
+        <div className="backdrop" onClick={() => setDrawerOpen(false)} />
+      )}
+
+      <aside className={`drawer ${drawerOpen ? "open" : ""}`}>
+        <button className="primary full" onClick={newChat}>
+          + New chat
+        </button>
+        <div className="conv-list">
+          {conversations.length === 0 && (
+            <p className="empty-hint small">No conversations yet.</p>
+          )}
+          {conversations.map((c) => (
+            <div
+              key={c.id}
+              className={`conv-item ${c.id === activeId ? "active" : ""}`}
+              onClick={() => openConversation(c.id)}
+            >
+              <span className="conv-title">{c.title}</span>
+              <button
+                className="ghost icon small"
+                onClick={(e) => removeConversation(c.id, e)}
+                title="Delete"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      </aside>
+
       <div className="messages" ref={scrollRef}>
-        {messages.length === 0 && (
+        {loadingHistory && <p className="empty-hint">Loading…</p>}
+        {!loadingHistory && messages.length === 0 && (
           <p className="empty-hint">Start a conversation.</p>
         )}
         {messages.map((m, i) => (
           <div key={i} className={`bubble ${m.role}`}>
-            {m.content || (busy && i === messages.length - 1 ? "…" : "")}
+            {m.role === "assistant" ? (
+              m.content ? (
+                <div
+                  className="md"
+                  dangerouslySetInnerHTML={renderMarkdown(m.content)}
+                />
+              ) : busy && i === messages.length - 1 ? (
+                "…"
+              ) : (
+                ""
+              )
+            ) : (
+              m.content
+            )}
           </div>
         ))}
         {error && <p className="error">{error}</p>}
