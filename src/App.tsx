@@ -32,6 +32,14 @@ function renderMarkdown(content: string): { __html: string } {
   return { __html: DOMPurify.sanitize(html) };
 }
 
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -228,7 +236,14 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
           });
         },
         model,
-        (query) => setSearchStatus(`Searching the web: "${query}"…`)
+        (query) => setSearchStatus(`Searching the web: "${query}"…`),
+        (sources) =>
+          setMessages((prev) => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            next[next.length - 1] = { ...last, sources };
+            return next;
+          })
       );
 
       if (!activeId && returnedId) setActiveId(returnedId);
@@ -349,10 +364,28 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
           <div key={i} className={`bubble ${m.role}`}>
             {m.role === "assistant" ? (
               m.content ? (
-                <div
-                  className="md"
-                  dangerouslySetInnerHTML={renderMarkdown(m.content)}
-                />
+                <>
+                  <div
+                    className="md"
+                    dangerouslySetInnerHTML={renderMarkdown(m.content)}
+                  />
+                  {m.sources && m.sources.length > 0 && (
+                    <div className="sources">
+                      {m.sources.map((s, si) => (
+                        
+                          key={si}
+                          className="source-chip"
+                          href={s.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={s.title}
+                        >
+                          {hostnameOf(s.url)}
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </>
               ) : busy && i === messages.length - 1 ? (
                 <span className="typing"><span /><span /><span /></span>
               ) : (
