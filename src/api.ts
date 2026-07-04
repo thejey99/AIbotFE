@@ -1,6 +1,12 @@
 import { getToken } from "./firebase";
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? "";
+const API_BASE = import.meta.env.VITE_API_BASE;
+
+if (!API_BASE) {
+  throw new Error(
+    "VITE_API_BASE is not set. Add it as an environment variable in Render and redeploy."
+  );
+}
 
 export interface ChatMessage {
   role: "user" | "assistant";
