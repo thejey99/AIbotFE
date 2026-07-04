@@ -167,11 +167,7 @@ function MessageBubble({
     return (
       <div className="bubble assistant">
         {isStreamingPlaceholder ? (
-          <span className="typing">
-            <span />
-            <span />
-            <span />
-          </span>
+          <span className="typing"><span /><span /><span /></span>
         ) : (
           ""
         )}
@@ -187,11 +183,7 @@ function MessageBubble({
       {runnables.length > 0 && (
         <div className="sources">
           {runnables.map((b, bi) => (
-            <button
-              key={bi}
-              className="source-chip run-chip"
-              onClick={() => onRun(b)}
-            >
+            <button key={bi} className="source-chip run-chip" onClick={() => onRun(b)}>
               ▶ {b.label}
             </button>
           ))}
@@ -200,14 +192,7 @@ function MessageBubble({
       {m.sources && m.sources.length > 0 && (
         <div className="sources">
           {m.sources.map((s, si) => (
-            
-              key={si}
-              className="source-chip"
-              href={s.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={s.title}
-            >
+            <a key={si} className="source-chip" href={s.url} target="_blank" rel="noopener noreferrer" title={s.title}>
               {hostnameOf(s.url)}
             </a>
           ))}
@@ -506,9 +491,7 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
         </button>
       </header>
 
-      {drawerOpen && (
-        <div className="backdrop" onClick={() => setDrawerOpen(false)} />
-      )}
+      {drawerOpen && <div className="backdrop" onClick={() => setDrawerOpen(false)} />}
 
       <aside className={"drawer " + (drawerOpen ? "open" : "")}>
         <button className="primary full" onClick={newChat}>
@@ -548,18 +531,10 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
                 {c.pinned && <span className="pin-mark">📌 </span>}
                 {c.title}
               </span>
-              <button
-                className="ghost icon small"
-                onClick={(e) => togglePin(c, e)}
-                title={c.pinned ? "Unpin" : "Pin"}
-              >
+              <button className="ghost icon small" onClick={(e) => togglePin(c, e)} title={c.pinned ? "Unpin" : "Pin"}>
                 {c.pinned ? "📌" : "📍"}
               </button>
-              <button
-                className="ghost icon small"
-                onClick={(e) => removeConversation(c.id, e)}
-                title="Delete"
-              >
+              <button className="ghost icon small" onClick={(e) => removeConversation(c.id, e)} title="Delete">
                 ×
               </button>
             </div>
@@ -589,28 +564,15 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
         {pendingImage && (
           <div className="attach-preview">
             <img src={pendingImage} alt="pending attachment" />
-            <button
-              className="ghost icon small"
-              onClick={() => setPendingImage(null)}
-            >
+            <button className="ghost icon small" onClick={() => setPendingImage(null)}>
               ×
             </button>
           </div>
         )}
-        <button
-          className="ghost model-toggle"
-          onClick={() => fileInputRef.current?.click()}
-          title="Attach an image"
-        >
+        <button className="ghost model-toggle" onClick={() => fileInputRef.current?.click()} title="Attach an image">
           📷
         </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          style={{ display: "none" }}
-          onChange={attachImage}
-        />
+        <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={attachImage} />
         <button
           className={"ghost model-toggle " + (proMode ? "pro-on" : "")}
           onClick={() => setProMode((p) => !p)}
@@ -618,8 +580,7 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
         >
           {proMode ? "PRO" : "fast"}
         </button>
-        <textarea
-          ref={textareaRef}
+        <textarea ref={textareaRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
@@ -632,11 +593,7 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
           rows={1}
           style={{ overflowY: "auto" }}
         />
-        <button
-          className="primary"
-          onClick={send}
-          disabled={busy || (!input.trim() && !pendingImage)}
-        >
+        <button className="primary" onClick={send} disabled={busy || (!input.trim() && !pendingImage)}>
           Send
         </button>
       </div>
@@ -702,13 +659,7 @@ function SandboxPanel({
           </div>
         </div>
 
-        <iframe
-          key={nonce}
-          className="sandbox-frame"
-          sandbox="allow-scripts"
-          srcDoc={srcDoc}
-          title="Code sandbox"
-        />
+        <iframe key={nonce} className="sandbox-frame" sandbox="allow-scripts" srcDoc={srcDoc} title="Code sandbox" />
 
         <div className="sandbox-console" ref={logRef}>
           {logs.length === 0 && (
@@ -794,8 +745,7 @@ function MemoryPanel({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="memory-add">
-          <input
-            value={newText}
+          <input value={newText}
             onChange={(e) => setNewText(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && add()}
             placeholder="Add a fact manually…"
@@ -815,15 +765,8 @@ function MemoryPanel({ onClose }: { onClose: () => void }) {
 
         <div className="memory-list">
           {items.map((item) => (
-            <div
-              key={item.id}
-              className={"memory-item " + (item.active ? "" : "inactive")}
-            >
-              <span
-                className="memory-text"
-                onClick={() => edit(item)}
-                title="Tap to edit"
-              >
+            <div key={item.id} className={"memory-item " + (item.active ? "" : "inactive")}>
+              <span className="memory-text" onClick={() => edit(item)} title="Tap to edit">
                 {item.text}
               </span>
               <button className="ghost" onClick={() => toggle(item)}>
@@ -904,8 +847,7 @@ function AdminPanel({
         </div>
 
         <div className="memory-add">
-          <input
-            value={newEmail}
+          <input value={newEmail}
             onChange={(e) => setNewEmail(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && add()}
             placeholder="email@example.com"
