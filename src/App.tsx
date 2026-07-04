@@ -113,6 +113,7 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     (async () => {
@@ -128,6 +129,14 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages, searchStatus]);
+
+  // Auto-resize the textarea based on its content
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  }, [input]);
 
   async function refreshConversations() {
     try {
@@ -475,6 +484,7 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
           {proMode ? "PRO" : "fast"}
         </button>
         <textarea
+          ref={textareaRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
@@ -485,6 +495,7 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
           }}
           placeholder={proMode ? "Message (Pro)…" : "Message…"}
           rows={1}
+          style={{ overflowY: "auto" }}
         />
         <button
           className="primary"
