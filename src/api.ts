@@ -19,6 +19,16 @@ export interface ConversationSummary {
   updatedAt: number | null;
 }
 
+export interface MemoryItem {
+  id: string;
+  text: string;
+  active: boolean;
+  createdAt: number | null;
+  sourceConversationId: string | null;
+}
+
+export type ModelAlias = "default" | "pro";
+
 async function authHeaders(): Promise<Record<string, string>> {
   const token = await getToken();
   return {
@@ -56,71 +66,6 @@ export async function deleteConversation(conversationId: string): Promise<void> 
     { method: "DELETE", headers: await authHeaders() }
   );
   await jsonOrThrow(res);
-}
-
-/**
- * Send one message on the persistent contract. Streams deltas via onDelta.
- * Returns the conversationId (echoed back, or newly created by the server).
- */
-export async function streamChat(
-  message: string,
-  conversationId: string | null,
-  onDelta: (text: string) => void
-): Promise<string | null> {
-  const res = await fetch(`${API_BASE}/api/chat`, {
-    method: "POST",
-    headers: await authHeaders(),
-    body: JSON.stringify(
-      conversationId ? { conversationId, message } : { message }
-    ),
-  });
-
-  if (!res.ok || !res.body) {
-    const detail = await res.json().catch(() => ({}));
-    throw new Error(detail.error ?? `Request failed (${res.status})`);
-  }
-
-  const newId = res.headers.get("X-Conversation-Id");
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-
-    // Process complete lines only; keep the trailing partial in the buffer
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("data:")) continue;
-
-      const payload = trimmed.slice(5).trim();
-      if (payload === "[DONE]") return conversationId ?? newId;
-
-      try {
-        const json = JSON.parse(payload);
-        const delta: string | undefined = json.choices?.[0]?.delta?.content;
-        if (delta) onDelta(delta);
-      } catch {
-        // Ignore malformed/partial frames
-      }
-    }
-  }
-
-  return conversationId ?? newId;
-}
-export interface MemoryItem {
-  id: string;
-  text: string;
-  active: boolean;
-  createdAt: number | null;
-  sourceConversationId: string | null;
 }
 
 export async function listMemory(): Promise<MemoryItem[]> {
@@ -163,4 +108,65 @@ export async function rememberConversation(
     }
   );
   return jsonOrThrow(res);
+}
+
+/**
+ * Send one message on the persistent contract. Streams deltas via onDelta.
+ * Returns the conversationId (echoed back, or newly created by the server).
+ */
+export async function streamChat(
+  message: string,
+  conversationId: string | null,
+  onDelta: (text: string) => void,
+  model: ModelAlias = "default"
+): Promise<string | null> {
+  const res = await fetch(`${API_BASE}/api/chat`, {
+    method: "POST",
+    headers: await authHeaders(),
+    body: JSON.stringify({
+      message,
+      ...(conversationId ? { conversationId } : {}),
+      ...(model !== "default" ? { model } : {}),
+    }),
+  });
+
+  if (!res.ok || !res.body) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail.error ?? `Request failed (${res.status})`);
+  }
+
+  const newId = res.headers.get("X-Conversation-Id");
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+
+    // Process complete lines only; keep the trailing partial in the buffer
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+
+      const payload = trimmed.slice(5).trim();
+      if (payload === "[DONE]") return conversationId ?? newId;
+
+      try {
+        const json = JSON.parse(payload);
+        const delta: string | undefined = json.choices?.[0]?.delta?.content;
+        if (delta) onDelta(delta);
+      } catch {
+        // Ignore malformed/partial frames
+      }
+    }
+  }
+
+  return conversationId ?? newId;
 }
