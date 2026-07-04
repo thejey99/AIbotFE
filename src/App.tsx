@@ -618,6 +618,10 @@ function SandboxPanel({
 }) {
   const [logs, setLogs] = useState<Array<{ level: string; text: string }>>([]);
   const [nonce, setNonce] = useState(0);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [consoleOpen, setConsoleOpen] = useState(
+    () => window.innerWidth > 700 // collapsed by default on phones
+  );
   const logRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -639,6 +643,8 @@ function SandboxPanel({
 
   const srcDoc = useMemo(() => buildSrcDoc(block), [block, nonce]);
 
+  const errorCount = logs.filter((l) => l.level === "error").length;
+
   function reload() {
     setLogs([]);
     setNonce((n) => n + 1);
@@ -646,10 +652,13 @@ function SandboxPanel({
 
   return (
     <div className="memory-overlay">
-      <div className="memory-panel sandbox-panel">
+      <div className={"memory-panel sandbox-panel " + (fullscreen ? "fullscreen" : "")}>
         <div className="memory-header">
           <span className="topbar-title">▶ Sandbox</span>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
+          <div style={{ display: "flex", gap: "0.4rem" }}>
+            <button className="ghost" onClick={() => setFullscreen((f) => !f)}>
+              {fullscreen ? "🗗" : "⛶"}
+            </button>
             <button className="ghost" onClick={reload}>
               Reload
             </button>
@@ -661,16 +670,23 @@ function SandboxPanel({
 
         <iframe key={nonce} className="sandbox-frame" sandbox="allow-scripts" srcDoc={srcDoc} title="Code sandbox" />
 
-        <div className="sandbox-console" ref={logRef}>
-          {logs.length === 0 && (
-            <div className="console-line dim">Console output appears here…</div>
-          )}
-          {logs.map((l, i) => (
-            <div key={i} className={"console-line " + l.level}>
-              {l.text}
-            </div>
-          ))}
-        </div>
+        <button className="ghost console-toggle" onClick={() => setConsoleOpen((c) => !c)}>
+          {consoleOpen ? "▾ Console" : "▸ Console"}
+          {errorCount > 0 && <span className="console-badge">{errorCount}</span>}
+        </button>
+
+        {consoleOpen && (
+          <div className="sandbox-console" ref={logRef}>
+            {logs.length === 0 && (
+              <div className="console-line dim">Console output appears here…</div>
+            )}
+            {logs.map((l, i) => (
+              <div key={i} className={"console-line " + l.level}>
+                {l.text}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
