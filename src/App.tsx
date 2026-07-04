@@ -60,14 +60,20 @@ interface RunnableBlock {
   label: string;
 }
 
+// The code-fence marker, built dynamically so this source file never
+// contains a literal triple-backtick (which corrupts when shared in
+// markdown contexts).
+const FENCE = String.fromCharCode(96, 96, 96);
+const BLOCK_RE = new RegExp(FENCE + "(\\w+)?\\n([\\s\\S]*?)" + FENCE, "g");
+
 function extractRunnableBlocks(content: string): RunnableBlock[] {
   const blocks: RunnableBlock[] = [];
-  const re = /```(\w+)?\n([\s\S]*?)```/g;
   let match: RegExpExecArray | null;
   let htmlCount = 0;
   let jsCount = 0;
 
-  while ((match = re.exec(content)) !== null) {
+  BLOCK_RE.lastIndex = 0;
+  while ((match = BLOCK_RE.exec(content)) !== null) {
     const lang = (match[1] ?? "").toLowerCase();
     const code = match[2];
     if (!code.trim()) continue;
@@ -77,58 +83,61 @@ function extractRunnableBlocks(content: string): RunnableBlock[] {
       blocks.push({
         lang: "html",
         code,
-        label: htmlCount > 1 ? `Run HTML #${htmlCount}` : "Run HTML",
+        label: htmlCount > 1 ? "Run HTML #" + htmlCount : "Run HTML",
       });
     } else if (lang === "js" || lang === "javascript") {
       jsCount++;
       blocks.push({
         lang: "js",
         code,
-        label: jsCount > 1 ? `Run JS #${jsCount}` : "Run JS",
+        label: jsCount > 1 ? "Run JS #" + jsCount : "Run JS",
       });
     }
   }
   return blocks;
 }
 
-const SANDBOX_HARNESS = `<script>
-(function () {
-  function fmt(a) {
-    try { return typeof a === "object" ? JSON.stringify(a) : String(a); }
-    catch { return String(a); }
-  }
-  function send(level, args) {
-    parent.postMessage(
-      { __sandbox: true, level: level, text: Array.prototype.map.call(args, fmt).join(" ") },
-      "*"
-    );
-  }
-  ["log", "info", "warn", "error"].forEach(function (l) {
-    var orig = console[l];
-    console[l] = function () { send(l, arguments); orig.apply(console, arguments); };
-  });
-  window.addEventListener("error", function (e) {
-    send("error", [e.message + " (line " + e.lineno + ")"]);
-  });
-  window.addEventListener("unhandledrejection", function (e) {
-    send("error", ["Unhandled promise rejection: " + fmt(e.reason)]);
-  });
-})();
-<\/script>`;
+const SANDBOX_HARNESS = [
+  "<script>",
+  "(function () {",
+  "  function fmt(a) {",
+  '    try { return typeof a === "object" ? JSON.stringify(a) : String(a); }',
+  "    catch { return String(a); }",
+  "  }",
+  "  function send(level, args) {",
+  "    parent.postMessage(",
+  '      { __sandbox: true, level: level, text: Array.prototype.map.call(args, fmt).join(" ") },',
+  '      "*"',
+  "    );",
+  "  }",
+  '  ["log", "info", "warn", "error"].forEach(function (l) {',
+  "    var orig = console[l];",
+  "    console[l] = function () { send(l, arguments); orig.apply(console, arguments); };",
+  "  });",
+  '  window.addEventListener("error", function (e) {',
+  '    send("error", [e.message + " (line " + e.lineno + ")"]);',
+  "  });",
+  '  window.addEventListener("unhandledrejection", function (e) {',
+  '    send("error", ["Unhandled promise rejection: " + fmt(e.reason)]);',
+  "  });",
+  "})();",
+  "</scr" + "ipt>",
+].join("\n");
 
 function buildSrcDoc(block: RunnableBlock): string {
   if (block.lang === "html") {
     // Prepend the harness so console capture is active before user code runs
     return SANDBOX_HARNESS + "\n" + block.code;
   }
-  // Plain JS: wrap in a minimal shell. Escape any </script> inside the code.
-  const safe = block.code.replace(/<\/script>/gi, "<\\/script>");
+  // Plain JS: wrap in a minimal shell. Escape any closing script tags inside.
+  const safe = block.code.replace(/<\/script>/gi, "<\\/scr" + "ipt>");
   return (
     "<!DOCTYPE html><html><head>" +
     SANDBOX_HARNESS +
-    '</head><body style="margin:0;background:#fff;color:#111;font-family:monospace"><script>' +
+    '</head><body style="margin:0;background:#fff;color:#111;font-family:monospace">' +
+    "<scr" + "ipt>" +
     safe +
-    "<\\/script></body></html>"
+    "</scr" + "ipt></body></html>"
   );
 }
 
