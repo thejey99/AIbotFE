@@ -269,7 +269,7 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
                   dangerouslySetInnerHTML={renderMarkdown(m.content)}
                 />
               ) : busy && i === messages.length - 1 ? (
-                "…"
+                <span className="typing"><span /><span /><span /></span>
               ) : (
                 ""
               )
