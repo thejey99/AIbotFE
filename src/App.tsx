@@ -407,7 +407,7 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
                   {m.sources && m.sources.length > 0 && (
                     <div className="sources">
                       {m.sources.map((s, si) => (
-                        
+                        <a
                           key={si}
                           className="source-chip"
                           href={s.url}
