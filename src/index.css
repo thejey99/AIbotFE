@@ -588,3 +588,49 @@ textarea:focus, input:focus {
 }
 
 .composer { position: relative; }
+
+/* ---- Code sandbox ---- */
+
+.run-chip {
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+  color: var(--gold);
+  border-color: rgba(255, 209, 102, 0.4);
+}
+
+.run-chip:hover {
+  color: var(--gold);
+  border-color: var(--gold);
+}
+
+.sandbox-panel {
+  height: 88dvh;
+  max-height: 88dvh;
+}
+
+.sandbox-frame {
+  flex: 1;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  min-height: 0;
+}
+
+.sandbox-console {
+  height: 7.5rem;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.5rem 0.7rem;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+.console-line { padding: 0.1rem 0; white-space: pre-wrap; word-break: break-word; }
+.console-line.error { color: var(--danger); }
+.console-line.warn { color: var(--gold); }
+.console-line.dim { color: var(--text-dim); }
