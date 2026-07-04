@@ -16,6 +16,7 @@ export interface SearchSource {
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  image?: string | null;
   sources?: SearchSource[] | null;
 }
 
@@ -181,8 +182,9 @@ export async function removeFromAllowlist(email: string): Promise<void> {
 
 /**
  * Send one message on the persistent contract. Streams deltas via onDelta,
- * reports web searches via onSearch, and delivers source citations via
- * onSources. Returns the conversationId (echoed back, or newly created).
+ * reports web searches via onSearch, delivers source citations via
+ * onSources, and optionally attaches a compressed image data URL.
+ * Returns the conversationId (echoed back, or newly created).
  */
 export async function streamChat(
   message: string,
@@ -190,7 +192,8 @@ export async function streamChat(
   onDelta: (text: string) => void,
   model: ModelAlias = "default",
   onSearch?: (query: string) => void,
-  onSources?: (sources: SearchSource[]) => void
+  onSources?: (sources: SearchSource[]) => void,
+  image?: string | null
 ): Promise<string | null> {
   const res = await fetch(`${API_BASE}/api/chat`, {
     method: "POST",
@@ -199,6 +202,7 @@ export async function streamChat(
       message,
       ...(conversationId ? { conversationId } : {}),
       ...(model !== "default" ? { model } : {}),
+      ...(image ? { image } : {}),
     }),
   });
 
