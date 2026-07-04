@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#12121f"/>
+      <stop offset="1" stop-color="#0c0c16"/>
+    </linearGradient>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6c63ff"/>
+      <stop offset="1" stop-color="#8b7cff"/>
+    </linearGradient>
+  </defs>
+  <!-- Full-bleed opaque background (iOS masks its own corners) -->
+  <rect width="180" height="180" fill="url(#bg)"/>
+  <!-- Chat bubble, centered with breathing room -->
+  <path fill="url(#g)" d="M90 34c-31.5 0-57 22.6-57 50.4 0 16.2 8.7 30.7 22.3 39.9-.7 7.4-3.3 14-7.9 19.5-1.1 1.3 0 3.5 1.8 3.3 11.2-1.3 20.8-5.5 28.3-10.7 4.1.9 8.3 1.3 12.5 1.3 31.5 0 57-22.6 57-50.4S121.5 34 90 34z"/>
+  <!-- Spark -->
+  <path fill="#ffffff" d="M90 58l7 18.2L116 82l-19 5.8L90 106l-7-18.2L64 82l19-5.8L90 58z"/>
+</svg>
