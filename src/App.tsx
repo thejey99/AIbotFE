@@ -8,8 +8,13 @@ import {
   listConversations,
   getMessages,
   deleteConversation,
+  listMemory,
+  addMemory,
+  updateMemory,
+  rememberConversation,
   type ChatMessage,
   type ConversationSummary,
+  type MemoryItem,
 } from "./api";
 
 marked.setOptions({ breaks: true });
@@ -69,6 +74,9 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [error, setError] = useState("");
+  const [memoryOpen, setMemoryOpen] = useState(false);
+  const [remembering, setRemembering] = useState(false);
+  const [rememberResult, setRememberResult] = useState<string>("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -91,6 +99,7 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
     setDrawerOpen(false);
     if (id === activeId || busy) return;
     setError("");
+    setRememberResult("");
     setLoadingHistory(true);
     try {
       const history = await getMessages(id);
@@ -108,6 +117,7 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
     setActiveId(null);
     setMessages([]);
     setError("");
+    setRememberResult("");
     setDrawerOpen(false);
   }
 
@@ -127,11 +137,31 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
     }
   }
 
+  async function remember() {
+    if (!activeId || remembering) return;
+    setRememberResult("");
+    setRemembering(true);
+    try {
+      const result = await rememberConversation(activeId);
+      setRememberResult(
+        result.added.length === 0 && result.deactivated === 0
+          ? "Nothing new to remember."
+          : `Remembered ${result.added.length} fact(s)` +
+            (result.deactivated > 0 ? `, retired ${result.deactivated} outdated.` : ".")
+      );
+    } catch (err: any) {
+      setRememberResult(err?.message ?? "Extraction failed");
+    } finally {
+      setRemembering(false);
+    }
+  }
+
   async function send() {
     const text = input.trim();
     if (!text || busy) return;
 
     setError("");
+    setRememberResult("");
     setInput("");
     setBusy(true);
 
@@ -171,6 +201,11 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
         </button>
         <span className="topbar-title">Chat</span>
         <span className="topbar-user">{userEmail}</span>
+        {activeId && (
+          <button className="ghost" onClick={remember} disabled={remembering}>
+            {remembering ? "…" : "Remember"}
+          </button>
+        )}
         <button className="ghost" onClick={() => signOut()}>
           Sign out
         </button>
@@ -183,6 +218,15 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
       <aside className={`drawer ${drawerOpen ? "open" : ""}`}>
         <button className="primary full" onClick={newChat}>
           + New chat
+        </button>
+        <button
+          className="ghost full"
+          onClick={() => {
+            setDrawerOpen(false);
+            setMemoryOpen(true);
+          }}
+        >
+          🧠 Memory
         </button>
         <div className="conv-list">
           {conversations.length === 0 && (
@@ -231,6 +275,7 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
           </div>
         ))}
         {error && <p className="error">{error}</p>}
+        {rememberResult && <p className="empty-hint small">{rememberResult}</p>}
       </div>
 
       <div className="composer">
@@ -249,6 +294,120 @@ function ChatScreen({ userEmail }: { userEmail: string }) {
         <button className="primary" onClick={send} disabled={busy || !input.trim()}>
           Send
         </button>
+      </div>
+
+      {memoryOpen && <MemoryPanel onClose={() => setMemoryOpen(false)} />}
+    </div>
+  );
+}
+
+function MemoryPanel({ onClose }: { onClose: () => void }) {
+  const [items, setItems] = useState<MemoryItem[]>([]);
+  const [newText, setNewText] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  async function refresh() {
+    setLoading(true);
+    setError("");
+    try {
+      setItems(await listMemory());
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to load memory");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function add() {
+    const text = newText.trim();
+    if (!text) return;
+    setNewText("");
+    try {
+      await addMemory(text);
+      refresh();
+    } catch (err: any) {
+      setError(err?.message ?? "Add failed");
+    }
+  }
+
+  async function toggle(item: MemoryItem) {
+    try {
+      await updateMemory(item.id, { active: !item.active });
+      setItems((prev) =>
+        prev.map((i) => (i.id === item.id ? { ...i, active: !i.active } : i))
+      );
+    } catch (err: any) {
+      setError(err?.message ?? "Update failed");
+    }
+  }
+
+  async function edit(item: MemoryItem) {
+    const text = window.prompt("Edit fact:", item.text);
+    if (text === null || !text.trim() || text.trim() === item.text) return;
+    try {
+      await updateMemory(item.id, { text: text.trim() });
+      setItems((prev) =>
+        prev.map((i) => (i.id === item.id ? { ...i, text: text.trim() } : i))
+      );
+    } catch (err: any) {
+      setError(err?.message ?? "Update failed");
+    }
+  }
+
+  return (
+    <div className="memory-overlay">
+      <div className="memory-panel">
+        <div className="memory-header">
+          <span className="topbar-title">Memory</span>
+          <button className="ghost" onClick={onClose}>
+            Close
+          </button>
+        </div>
+
+        <div className="memory-add">
+          <input
+            value={newText}
+            onChange={(e) => setNewText(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && add()}
+            placeholder="Add a fact manually…"
+          />
+          <button className="primary" onClick={add} disabled={!newText.trim()}>
+            Add
+          </button>
+        </div>
+
+        {error && <p className="error">{error}</p>}
+        {loading && <p className="empty-hint small">Loading…</p>}
+        {!loading && items.length === 0 && (
+          <p className="empty-hint small">
+            No memories yet. Use "Remember" after a conversation.
+          </p>
+        )}
+
+        <div className="memory-list">
+          {items.map((item) => (
+            <div
+              key={item.id}
+              className={`memory-item ${item.active ? "" : "inactive"}`}
+            >
+              <span
+                className="memory-text"
+                onClick={() => edit(item)}
+                title="Tap to edit"
+              >
+                {item.text}
+              </span>
+              <button className="ghost" onClick={() => toggle(item)}>
+                {item.active ? "Retire" : "Restore"}
+              </button>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
