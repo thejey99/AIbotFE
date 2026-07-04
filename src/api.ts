@@ -115,3 +115,48 @@ export async function streamChat(
 
   return conversationId ?? newId;
 }
+export interface MemoryItem {
+  id: string;
+  text: string;
+  active: boolean;
+  createdAt: number | null;
+  sourceConversationId: string | null;
+}
+
+export async function listMemory(): Promise<MemoryItem[]> {
+  const res = await fetch(`${API_BASE}/api/memory`, {
+    headers: await authHeaders(),
+  });
+  return jsonOrThrow(res);
+}
+
+export async function addMemory(text: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/memory`, {
+    method: "POST",
+    headers: await authHeaders(),
+    body: JSON.stringify({ text }),
+  });
+  await jsonOrThrow(res);
+}
+
+export async function updateMemory(
+  id: string,
+  updates: { text?: string; active?: boolean }
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/memory/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: await authHeaders(),
+    body: JSON.stringify(updates),
+  });
+  await jsonOrThrow(res);
+}
+
+export async function rememberConversation(
+  conversationId: string
+): Promise<{ added: string[]; deactivated: number }> {
+  const res = await fetch(
+    `${API_BASE}/api/conversations/${encodeURIComponent(conversationId)}/remember`,
+    { method: "POST", headers: await authHeaders() }
+  );
+  return jsonOrThrow(res);
+}
