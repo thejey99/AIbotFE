@@ -556,3 +556,35 @@ textarea:focus, input:focus {
   border-color: var(--border-focus);
   transform: translateY(-1px);
 }
+/* ---- Image attachments ---- */
+
+.bubble-img {
+  display: block;
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: 12px;
+  margin-bottom: 0.4rem;
+}
+
+.attach-preview {
+  position: absolute;
+  bottom: calc(100% + 0.5rem);
+  left: 0.9rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.25rem;
+  background: var(--surface-solid);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.35rem;
+  animation: rise-in 0.25s var(--ease-out) both;
+}
+
+.attach-preview img {
+  max-width: 90px;
+  max-height: 90px;
+  border-radius: 8px;
+  display: block;
+}
+
+.composer { position: relative; }
