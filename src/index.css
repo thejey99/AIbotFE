@@ -525,3 +525,34 @@ textarea:focus, input:focus {
 }
 
 .role-badge.you { color: var(--accent-2); }
+/* ---- Source citations ---- */
+
+.sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.6rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--border);
+}
+
+.source-chip {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  text-decoration: none;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 0.18s ease, border-color 0.18s ease, transform 0.18s var(--ease-spring);
+}
+
+.source-chip:hover {
+  color: var(--text);
+  border-color: var(--border-focus);
+  transform: translateY(-1px);
+}
